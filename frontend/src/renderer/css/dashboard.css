@@ -1,0 +1,12 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 20px;
+}
+#productList {
+  list-style: none;
+  padding: 0;
+}
+#productList li {
+  padding: 8px;
+  border-bottom: 1px solid #eee;
+}

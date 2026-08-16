@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Fast POS</title>
+  <link rel="stylesheet" href="css/checkout.css">
+</head>
+<body>
+  <div id="app">
+    <div id="header">
+      <h1>🛒 Fast POS</h1>
+      <button id="backBtn">← Dashboard</button>
+    </div>
+
+    <!-- Search & Barcode -->
+    <div id="searchBar">
+      <input type="text" id="searchInput" placeholder="Search product or scan barcode..." autofocus>
+      <input type="text" id="barcodeInput" placeholder="Barcode scanner" style="display:none;">
+    </div>
+
+    <!-- Category filters (optional) -->
+    <div id="categoryFilters">
+      <button class="cat-btn active" data-cat="all">All</button>
+      <!-- categories will be injected here -->
+    </div>
+
+    <!-- Product grid (large tiles) -->
+    <div id="productGrid"></div>
+
+    <!-- Cart (simplified, right side or bottom) -->
+    <div id="cartSection">
+      <h2>Cart <span id="itemCount">0</span></h2>
+      <ul id="cartList"></ul>
+      <div id="cartTotal">
+        <span>Total</span>
+        <span id="totalAmount">$0.00</span>
+      </div>
+      <button id="checkoutBtn">💳 Pay Now</button>
+      <button id="clearCartBtn" class="secondary">🗑 Clear</button>
+      <p id="checkoutMessage"></p>
+    </div>
+  </div>
+
+  <script src="js/checkout.js"></script>
+</body>
+</html>
