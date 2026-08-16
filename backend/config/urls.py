@@ -18,6 +18,8 @@ from django.contrib import admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework.authtoken.views import obtain_auth_token
+from accounts.views import UserViewSet
+
 
 from inventory.views import CategoryViewSet, ProductViewSet
 from sales.views import SaleViewSet
@@ -27,9 +29,12 @@ router = DefaultRouter()
 router.register(r'categories', CategoryViewSet)
 router.register(r'products', ProductViewSet)
 router.register(r'sales', SaleViewSet)
+router.register(r'users', UserViewSet)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+
+    path('api/v1/auth/login/', CustomObtainAuthToken.as_view(), name='api_login'),
 
     # Login endpoint - POST username/password → returns token
     # path('api/v1/auth/login/', obtain_auth_token, name='api_login'),
