@@ -5,6 +5,8 @@ let allProducts = [];
 let categories = [];
 let currentCategory = 'all';
 let searchTimeout = null;
+let currentUserId = null;
+let currentUserRole = 'Cashier';
 
 // ----- État des onglets clients (6 onglets) -----
 const MAX_TABS = 6;
@@ -14,10 +16,44 @@ let customerTabs = Array.from({ length: MAX_TABS }, (_, i) => ({
   cart: []
 }));
 let activeTabIndex = 0; // 0-based
+let selectedCartItemIndex = -1;
 
-// ------------------------------------------------------------
+// ============================================================
+// NOTIFICATIONS (toast)
+// ============================================================
+function showNotification(message, type = 'success') {
+  const existing = document.getElementById('globalNotification');
+  if (existing) existing.remove();
+
+  const div = document.createElement('div');
+  div.id = 'globalNotification';
+  div.style.cssText = `
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    padding: 16px 24px;
+    border-radius: 12px;
+    background: ${type === 'success' ? '#28a745' : '#dc3545'};
+    color: white;
+    font-weight: 600;
+    font-size: 16px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    z-index: 9999;
+    max-width: 400px;
+    transition: opacity 0.3s ease;
+  `;
+  div.textContent = message;
+  document.body.appendChild(div);
+
+  setTimeout(() => {
+    div.style.opacity = '0';
+    setTimeout(() => div.remove(), 500);
+  }, 3000);
+}
+
+// ============================================================
 // FONCTIONS D'ACCÈS AU PANIER ACTIF
-// ------------------------------------------------------------
+// ============================================================
 function getActiveCart() {
   return customerTabs[activeTabIndex].cart;
 }
@@ -30,9 +66,9 @@ function getActiveTabName() {
   return customerTabs[activeTabIndex].name;
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // NAVIGATION (Sidebar)
-// ------------------------------------------------------------
+// ============================================================
 document.querySelectorAll('.nav-item').forEach(item => {
   item.addEventListener('click', () => {
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -47,19 +83,21 @@ document.querySelectorAll('.nav-item').forEach(item => {
       billing: 'Facturation',
       apps: 'Apps',
       settings: 'Paramètres',
-      history: 'Historique'
+      history: 'Historique',
+      users: 'Utilisateurs'
     };
     document.getElementById('pageTitle').textContent = titles[viewName] || viewName;
 
     if (viewName === 'dashboard') loadDashboard();
     if (viewName === 'counter') loadData();
     if (viewName === 'history') loadHistory();
+    if (viewName === 'users') loadUsers();
   });
 });
 
-// ------------------------------------------------------------
+// ============================================================
 // TOGGLE SIDEBAR
-// ------------------------------------------------------------
+// ============================================================
 const toggleBtn = document.getElementById('sidebarToggle');
 const sidebar = document.getElementById('sidebar');
 const mainContent = document.getElementById('mainContent');
@@ -71,9 +109,9 @@ if (toggleBtn) {
   });
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // DASHBOARD
-// ------------------------------------------------------------
+// ============================================================
 async function loadDashboard() {
   try {
     const sales = await window.api.getSales();
@@ -121,9 +159,9 @@ async function loadDashboard() {
   }
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // VUE 1 : COMPTOIR (avec onglets clients)
-// ------------------------------------------------------------
+// ============================================================
 async function loadData() {
   try {
     allProducts = await window.api.getProducts();
@@ -172,7 +210,6 @@ function applyFilters() {
   renderProducts(filtered);
 }
 
-// ----- Affichage des produits en tableau -----
 function renderProducts(products) {
   const tbody = document.getElementById('productTableBody');
   if (!tbody) return;
@@ -207,7 +244,7 @@ function renderProducts(products) {
   });
 }
 
-// ----- Recherche & scan (F1 / Enter) -----
+// ----- Recherche & scan -----
 const searchInput = document.getElementById('searchInput');
 if (searchInput) {
   searchInput.addEventListener('input', () => {
@@ -229,7 +266,7 @@ if (searchInput) {
   });
 }
 
-// ----- RENDU DES ONGLETS CLIENTS -----
+// ----- Onglets clients -----
 function renderTabs() {
   const tabBar = document.getElementById('tabBar');
   if (!tabBar) return;
@@ -251,16 +288,13 @@ function renderTabs() {
       renderCart();
       const msg = document.getElementById('checkoutMessage');
       if (msg) msg.textContent = '';
-      // Mettre à jour l'affichage du client actuel si présent
       updateActiveCustomerDisplay();
     });
   });
 
-  // Mettre à jour l'affichage du client actuel
   updateActiveCustomerDisplay();
 }
 
-// Fonction pour afficher le client actuel (optionnel)
 function updateActiveCustomerDisplay() {
   const display = document.getElementById('currentCustomerDisplay');
   if (display) {
@@ -269,7 +303,7 @@ function updateActiveCustomerDisplay() {
   }
 }
 
-// ----- FONCTIONS PANIER (agissent sur l'onglet actif) -----
+// ----- Gestion du panier -----
 function addToCart(productId, qty = 1) {
   const product = allProducts.find(p => p.id === productId);
   if (!product) return;
@@ -317,6 +351,13 @@ function clearActiveCart() {
   }
 }
 
+// Rendre les fonctions globales pour les onclick inline
+window.addToCart = addToCart;
+window.removeFromCart = removeFromCart;
+window.updateQty = updateQty;
+window.clearActiveCart = clearActiveCart;
+
+// ----- Rendu du panier -----
 function renderCart() {
   const list = document.getElementById('cartList');
   const totalSpan = document.getElementById('totalAmount');
@@ -344,7 +385,6 @@ function renderCart() {
     const price = parseFloat(item.product.price) || 0;
     const stock = parseInt(item.product.stock_qty) || 0;
     const isOutOfStock = stock < item.qty;
-
     const subtotal = price * item.qty;
     total += subtotal;
     totalItems += item.qty;
@@ -375,7 +415,6 @@ function renderCart() {
 
   list.innerHTML = html;
 
-  // Sélection au clic
   list.querySelectorAll('.cart-item').forEach(li => {
     li.addEventListener('click', () => {
       const idx = parseInt(li.dataset.index);
@@ -393,15 +432,7 @@ function renderCart() {
   if (checkoutBtn) checkoutBtn.disabled = false;
 }
 
-// Rendre les fonctions globales pour les onclick inline
-window.addToCart = addToCart;
-window.removeFromCart = removeFromCart;
-window.updateQty = updateQty;
-window.clearActiveCart = clearActiveCart;
-
-// ----- Sélection d'article dans le panier (pour F2-F4) -----
-let selectedCartItemIndex = -1;
-
+// ----- Sélection d'article (pour F2-F4) -----
 function getSelectedCartItem() {
   const cart = getActiveCart();
   if (selectedCartItemIndex >= 0 && selectedCartItemIndex < cart.length) {
@@ -429,7 +460,6 @@ function removeSelectedItem() {
   }
 }
 
-// ----- CHECKOUT (Paiement) -----
 // ----- CHECKOUT (Paiement) -----
 const checkoutBtn = document.getElementById('checkoutBtn');
 if (checkoutBtn) {
@@ -466,19 +496,15 @@ if (checkoutBtn) {
 
       showReceipt(saleResult, cart);
 
-      // Vider le panier de l'onglet actif
       setActiveCart([]);
       renderCart();
       renderTabs();
       await loadData();
 
     } catch (err) {
-      // ---- GESTION DES ERREURS DE STOCK ----
       const errorMsg = err.message || 'Erreur inconnue';
-      
-      // Vérifier si l'erreur concerne le stock
+
       if (errorMsg.includes('Insufficient stock')) {
-        // Extraire le nom du produit et le stock disponible
         const match = errorMsg.match(/Insufficient stock for (.+?)\. Available: (\d+)/);
         if (match) {
           const productName = match[1];
@@ -492,14 +518,11 @@ if (checkoutBtn) {
                 🗑 Retirer les articles en rupture
               </button>
             `;
-            // Ajouter l'événement pour retirer automatiquement les produits en rupture
             const removeBtn = document.getElementById('removeOutOfStockBtn');
             if (removeBtn) {
               removeBtn.addEventListener('click', () => {
-                // Identifier les produits avec stock insuffisant (stock = 0)
                 const outOfStockItems = cart.filter(item => (parseInt(item.product.stock_qty) || 0) < item.qty);
                 outOfStockItems.forEach(item => {
-                  // Retirer du panier
                   const cart = getActiveCart();
                   const idx = cart.findIndex(i => i.product.id === item.product.id);
                   if (idx !== -1) cart.splice(idx, 1);
@@ -511,45 +534,38 @@ if (checkoutBtn) {
                   msg.style.color = '#28a745';
                   msg.textContent = '✅ Articles en rupture retirés du panier. Veuillez réessayer.';
                 }
-                // Réactiver le bouton
                 btn.disabled = false;
                 btn.textContent = '💳 Payer';
               });
             }
           }
         } else {
-          // Si on ne peut pas parser, afficher l'erreur brute
           if (msg) {
             msg.style.color = '#dc3545';
             msg.textContent = `❌ ${errorMsg}`;
           }
         }
       } else {
-        // Autres types d'erreurs
         if (msg) {
           msg.style.color = '#dc3545';
           msg.textContent = `❌ ${errorMsg}`;
         }
       }
     } finally {
-      // Ne pas réactiver le bouton si on a affiché le bouton "Retirer"
       if (!document.getElementById('removeOutOfStockBtn')) {
         btn.disabled = false;
         btn.textContent = '💳 Payer';
-      } else {
-        // Le bouton restera désactivé tant que l'utilisateur n'aura pas cliqué sur "Retirer"
-        // On le réactive quand l'utilisateur clique sur le bouton de retrait (déjà fait dans l'événement)
-        // Mais on peut aussi le réactiver si l'utilisateur ferme le message
-        // On va ajouter un mécanisme : si l'utilisateur clique ailleurs, on réactive le bouton.
-        // Pour simplifier, on garde comme ça.
       }
     }
   });
 }
 
-// ------------------------------------------------------------
+const clearCartBtn = document.getElementById('clearCartBtn');
+if (clearCartBtn) clearCartBtn.addEventListener('click', clearActiveCart);
+
+// ============================================================
 // VUE 2 : GESTION DES PRODUITS (CRUD)
-// ------------------------------------------------------------
+// ============================================================
 async function loadProductManagement() {
   try {
     const products = await window.api.getProducts();
@@ -675,9 +691,9 @@ async function deleteProduct(id) {
   }
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // VUE 3 : HISTORIQUE DES VENTES
-// ------------------------------------------------------------
+// ============================================================
 let allSales = [];
 
 async function loadHistory(from = null, to = null) {
@@ -735,7 +751,6 @@ function toggleHistoryDetail(saleId) {
     detail.style.display = detail.style.display === 'none' ? 'block' : 'none';
   }
 }
-// Rendre la fonction globale pour l'onclick
 window.toggleHistoryDetail = toggleHistoryDetail;
 
 document.getElementById('historyFilterBtn')?.addEventListener('click', () => {
@@ -752,9 +767,9 @@ document.getElementById('historyResetBtn')?.addEventListener('click', () => {
   loadHistory();
 });
 
-// ------------------------------------------------------------
+// ============================================================
 // VUE 4 : PARAMÈTRES
-// ------------------------------------------------------------
+// ============================================================
 function loadSettings() {
   // Rien à charger pour l'instant
 }
@@ -771,76 +786,190 @@ if (saveSettingsBtn) {
   });
 }
 
-// ------------------------------------------------------------
-// RACCOURCIS CLAVIER
-// ------------------------------------------------------------
-document.addEventListener('keydown', (e) => {
-  // Éviter les raccourcis dans les champs de saisie
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
-    // F1 et F5 doivent fonctionner même dans les champs
-    if (e.key !== 'F1' && e.key !== 'F5') return;
+// ============================================================
+// GESTION DES UTILISATEURS (Admin)
+// ============================================================
+
+// Charger la liste des utilisateurs
+async function loadUsers() {
+  try {
+    const users = await window.api.getUsers();
+    const tbody = document.getElementById('usersTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    users.forEach(user => {
+      const isCurrentUser = (user.id === currentUserId);
+      const tr = document.createElement('tr');
+
+      // Colonne Rôle : si c'est l'utilisateur courant, on affiche juste du texte
+      let roleCell = '';
+      if (isCurrentUser) {
+        roleCell = `<span style="font-weight:600; color:#4f46e5;">${user.role} (vous)</span>`;
+      } else {
+        roleCell = `
+          <select class="role-select" data-userid="${user.id}">
+            <option value="Admin" ${user.role === 'Admin' ? 'selected' : ''}>Admin</option>
+            <option value="Manager" ${user.role === 'Manager' ? 'selected' : ''}>Manager</option>
+            <option value="Cashier" ${user.role === 'Cashier' ? 'selected' : ''}>Caissier</option>
+          </select>
+        `;
+      }
+
+      // Colonne Actions : bouton Sauvegarder (masqué pour l'utilisateur courant)
+      let actionsCell = '';
+      if (isCurrentUser) {
+        actionsCell = `<span style="color:#aaa;">—</span>`;
+      } else {
+        actionsCell = `
+          <button class="btn-sm btn-edit" onclick="saveUserRole(${user.id})">💾 Sauvegarder rôle</button>
+        `;
+      }
+
+      tr.innerHTML = `
+        <td>${user.id}</td>
+        <td>${user.username}</td>
+        <td>${user.email || ''}</td>
+        <td>${roleCell}</td>
+        <td>${actionsCell}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    const tbody = document.getElementById('usersTableBody');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="color:red;">Erreur: ${err.message}</td></tr>`;
+  }
+}
+
+// Sauvegarder le rôle d'un utilisateur (appelé par le bouton)
+window.saveUserRole = async function(userId) {
+  const select = document.querySelector(`.role-select[data-userid="${userId}"]`);
+  if (!select) {
+    showNotification('❌ Sélecteur non trouvé', 'error');
+    return;
+  }
+  const newRole = select.value;
+
+  if (userId === currentUserId) {
+    showNotification('⚠️ Vous ne pouvez pas modifier votre propre rôle !', 'error');
+    loadUsers();
+    return;
   }
 
-  switch (e.key) {
-    case 'F1':
-      e.preventDefault();
-      const search = document.getElementById('searchInput');
-      if (search) { search.focus(); search.select(); }
-      break;
-    case 'F2':
-      e.preventDefault();
-      increaseSelectedQty();
-      break;
-    case 'F3':
-      e.preventDefault();
-      decreaseSelectedQty();
-      break;
-    case 'F4':
-      e.preventDefault();
-      removeSelectedItem();
-      break;
-    case 'F5':
-      e.preventDefault();
-      // Pour l'instant, on crée un nouvel onglet vierge
-      // On pourrait aussi ouvrir un modal de recherche client
-      // Mais on garde simple : on passe au client suivant
-      const nextIndex = (activeTabIndex + 1) % MAX_TABS;
-      activeTabIndex = nextIndex;
-      renderTabs();
-      renderCart();
-      const msg = document.getElementById('checkoutMessage');
-      if (msg) msg.textContent = '';
-      break;
-    case 'F12':
-      e.preventDefault();
-      const payBtn = document.getElementById('checkoutBtn');
-      if (payBtn && !payBtn.disabled) payBtn.click();
-      break;
-    // Autres raccourcis
-    case 'Escape':
-      const receiptModal = document.getElementById('receiptModal');
-      if (receiptModal && !receiptModal.classList.contains('hidden')) {
-        closeReceipt();
+  try {
+    await window.api.updateUserRole(userId, newRole);
+    showNotification(`✅ Rôle mis à jour pour l'utilisateur #${userId}`, 'success');
+    loadUsers();
+  } catch (err) {
+    showNotification(`❌ Erreur: ${err.message}`, 'error');
+    loadUsers();
+  }
+};
+
+// Ouvrir le modal (ajout ou modification)
+function openUserModal(userId = null) {
+  const modal = document.getElementById('userModal');
+  const title = document.getElementById('userModalTitle');
+  const form = document.getElementById('userForm');
+  if (form) form.reset();
+  document.getElementById('editUserId').value = '';
+  document.getElementById('userModalMessage').textContent = '';
+  document.getElementById('userFormPassword').required = true;
+  modal.classList.remove('hidden');
+
+  if (userId) {
+    title.textContent = '✏️ Modifier l\'utilisateur';
+    window.api.getUsers().then(users => {
+      const u = users.find(user => user.id === userId);
+      if (u) {
+        document.getElementById('editUserId').value = u.id;
+        document.getElementById('userFormUsername').value = u.username;
+        document.getElementById('userFormEmail').value = u.email || '';
+        document.getElementById('userFormPassword').value = '';
+        document.getElementById('userFormPassword').required = false;
+        document.getElementById('userFormRole').value = u.role || 'Cashier';
       }
-      const productModal = document.getElementById('productModal');
-      if (productModal && !productModal.classList.contains('hidden')) {
-        productModal.classList.add('hidden');
-      }
-      break;
+    });
+  } else {
+    title.textContent = '➕ Ajouter un utilisateur';
+    document.getElementById('userFormPassword').required = true;
+  }
+}
+
+// Fermer le modal (bouton Annuler)
+document.getElementById('userModalCancelBtn').addEventListener('click', () => {
+  document.getElementById('userModal').classList.add('hidden');
+});
+
+// Sauvegarder (ajout ou modification)
+document.getElementById('userModalSaveBtn').addEventListener('click', async () => {
+  const id = document.getElementById('editUserId').value;
+  const username = document.getElementById('userFormUsername').value.trim();
+  const email = document.getElementById('userFormEmail').value.trim();
+  const password = document.getElementById('userFormPassword').value;
+  const role = document.getElementById('userFormRole').value;
+
+  if (!username) {
+    document.getElementById('userModalMessage').textContent = '❌ Le nom d\'utilisateur est requis.';
+    return;
+  }
+  if (!id && !password) {
+    document.getElementById('userModalMessage').textContent = '❌ Le mot de passe est requis pour un nouvel utilisateur.';
+    return;
+  }
+
+  const msg = document.getElementById('userModalMessage');
+  try {
+    let result;
+    if (id) {
+      const updateData = { username, email, role };
+      if (password) updateData.password = password;
+      result = await window.api.updateUser(parseInt(id), updateData);
+      msg.textContent = '✅ Utilisateur mis à jour !';
+    } else {
+      result = await window.api.createUser({ username, email, password, role });
+      msg.textContent = '✅ Utilisateur créé !';
+    }
+    setTimeout(() => {
+      document.getElementById('userModal').classList.add('hidden');
+      loadUsers();
+    }, 800);
+  } catch (err) {
+    msg.style.color = '#dc3545';
+    msg.textContent = `❌ Erreur: ${err.message}`;
   }
 });
 
-// Ctrl+Shift+C pour vider le panier
-document.addEventListener('keydown', (e) => {
-  if (e.ctrlKey && e.shiftKey && (e.key === 'c' || e.key === 'C')) {
-    e.preventDefault();
-    clearActiveCart();
+// Supprimer un utilisateur
+async function deleteUser(userId) {
+  if (!confirm('Supprimer définitivement cet utilisateur ?')) return;
+  try {
+    await window.api.deleteUser(userId);
+    loadUsers();
+  } catch (err) {
+    showNotification(`❌ Erreur: ${err.message}`, 'error');
   }
-});
+}
 
-// ------------------------------------------------------------
-// RECU
-// ------------------------------------------------------------
+// Mettre à jour le rôle (si utilisé ailleurs, mais on utilise saveUserRole)
+async function updateUserRole(userId, newRole) {
+  if (userId === currentUserId) {
+    showNotification('⚠️ Vous ne pouvez pas modifier votre propre rôle !', 'error');
+    loadUsers();
+    return;
+  }
+  try {
+    await window.api.updateUserRole(userId, newRole);
+    showNotification(`✅ Rôle mis à jour pour l'utilisateur #${userId}`, 'success');
+    loadUsers();
+  } catch (err) {
+    showNotification(`❌ Erreur: ${err.message}`, 'error');
+    loadUsers();
+  }
+}
+
+// ============================================================
+// RÉCÉPISSÉ (RECEIPT)
+// ============================================================
 function showReceipt(sale, cartItems) {
   const modal = document.getElementById('receiptModal');
   if (!modal) return;
@@ -874,7 +1003,6 @@ function showReceipt(sale, cartItems) {
   modal.classList.remove('hidden');
 }
 
-// Fonctions globales pour les boutons du reçu
 window.closeReceipt = function() {
   document.getElementById('receiptModal').classList.add('hidden');
 };
@@ -900,10 +1028,80 @@ window.printReceipt = function() {
   }
 };
 
-// ------------------------------------------------------------
-// INIT
-// ------------------------------------------------------------
+// ============================================================
+// RACCOURCIS CLAVIER
+// ============================================================
+document.addEventListener('keydown', (e) => {
+  // Éviter les raccourcis dans les champs de saisie
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
+    if (e.key !== 'F1' && e.key !== 'F5') return;
+  }
+
+  switch (e.key) {
+    case 'F1':
+      e.preventDefault();
+      const search = document.getElementById('searchInput');
+      if (search) { search.focus(); search.select(); }
+      break;
+    case 'F2':
+      e.preventDefault();
+      increaseSelectedQty();
+      break;
+    case 'F3':
+      e.preventDefault();
+      decreaseSelectedQty();
+      break;
+    case 'F4':
+      e.preventDefault();
+      removeSelectedItem();
+      break;
+    case 'F5':
+      e.preventDefault();
+      const nextIndex = (activeTabIndex + 1) % MAX_TABS;
+      activeTabIndex = nextIndex;
+      renderTabs();
+      renderCart();
+      const msg = document.getElementById('checkoutMessage');
+      if (msg) msg.textContent = '';
+      break;
+    case 'F12':
+      e.preventDefault();
+      const payBtn = document.getElementById('checkoutBtn');
+      if (payBtn && !payBtn.disabled) payBtn.click();
+      break;
+    case 'Escape':
+      const receiptModal = document.getElementById('receiptModal');
+      if (receiptModal && !receiptModal.classList.contains('hidden')) {
+        closeReceipt();
+      }
+      const productModal = document.getElementById('productModal');
+      if (productModal && !productModal.classList.contains('hidden')) {
+        productModal.classList.add('hidden');
+      }
+      break;
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.shiftKey && (e.key === 'c' || e.key === 'C')) {
+    e.preventDefault();
+    clearActiveCart();
+  }
+});
+
+// ============================================================
+// INITIALISATION
+// ============================================================
 window.addEventListener('DOMContentLoaded', async () => {
+  // Récupérer l'ID de l'utilisateur courant
+  try {
+    currentUserId = await window.api.getUserId();
+    console.log('ID utilisateur courant :', currentUserId);
+  } catch (err) {
+    console.warn('Impossible de récupérer l\'ID utilisateur:', err);
+  }
+
+  // Récupérer le nom d'utilisateur
   try {
     const username = await window.api.getUsername();
     document.getElementById('username').textContent = username || 'User';
@@ -913,13 +1111,44 @@ window.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('headerUsername').textContent = 'User';
   }
 
+  // Charger le rôle et appliquer les permissions
+  try {
+    currentUserRole = await window.api.getRole();
+    console.log('Rôle utilisateur :', currentUserRole);
+  } catch {
+    currentUserRole = 'Cashier';
+  }
+  applyPermissions();
+
+  // Charger les données initiales
   await loadDashboard();
   await loadData();
 
   const search = document.getElementById('searchInput');
   if (search) setTimeout(() => search.focus(), 300);
 
-  // Initialiser le panier par défaut
   renderCart();
   renderTabs();
 });
+
+// ============================================================
+// PERMISSIONS (Rôles)
+// ============================================================
+function applyPermissions() {
+  const body = document.body;
+  body.classList.remove('user-role-admin', 'user-role-manager', 'user-role-cashier');
+
+  if (currentUserRole === 'Admin') {
+    body.classList.add('user-role-admin');
+  } else if (currentUserRole === 'Manager') {
+    body.classList.add('user-role-manager');
+  } else {
+    body.classList.add('user-role-cashier');
+  }
+
+  const addProductBtn = document.getElementById('addProductBtn');
+  if (addProductBtn) {
+    const isManager = currentUserRole === 'Manager' || currentUserRole === 'Admin';
+    addProductBtn.style.display = isManager ? 'inline-block' : 'none';
+  }
+}

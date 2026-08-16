@@ -30,6 +30,11 @@
           <span class="icon">📱</span>
           <span class="label">Apps</span>
         </li>
+        <!-- 👇 Nouvel élément réservé aux admins -->
+        <li class="nav-item admin-only" data-view="users">
+          <span class="icon">👥</span>
+          <span class="label">Utilisateurs</span>
+        </li>
         <li class="nav-item" data-view="settings">
           <span class="icon">⚙️</span>
           <span class="label">Paramètres</span>
@@ -208,6 +213,33 @@
           <p id="settingsMessage"></p>
         </div>
       </section>
+
+      <!-- ============================================ -->
+      <!-- VUE 6 : GESTION DES UTILISATEURS (Admin)    -->
+      <!-- ============================================ -->
+      <section id="view-users" class="view admin-only">
+        <header class="view-header">
+          <h2>👥 Gestion des utilisateurs</h2>
+          <button id="addUserBtn" class="primary">➕ Ajouter un utilisateur</button>
+        </header>
+        <div id="usersList">
+          <table id="usersTable">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Nom d'utilisateur</th>
+                <th>Email</th>
+                <th>Rôle</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody">
+              <!-- Rempli par JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -245,6 +277,33 @@
         <button id="closeReceiptBtn" class="secondary" onclick="closeReceipt()">Fermer</button>
         <button id="printReceiptBtn" class="primary" onclick="printReceipt()">🖨 Imprimer</button>
       </div>
+    </div>
+  </div>
+
+  <!-- MODAL UTILISATEUR -->
+  <div id="userModal" class="modal hidden">
+    <div class="modal-content" style="max-width:500px;">
+      <h3 id="userModalTitle">➕ Ajouter un utilisateur</h3>
+      <form id="userForm">
+        <input type="hidden" id="editUserId">
+        <label>Nom d'utilisateur *</label>
+        <input type="text" id="userFormUsername" required>
+        <label>Email</label>
+        <input type="email" id="userFormEmail">
+        <label>Mot de passe *</label>
+        <input type="password" id="userFormPassword" required>
+        <label>Rôle</label>
+        <select id="userFormRole">
+          <option value="Cashier">Caissier</option>
+          <option value="Manager">Manager</option>
+          <option value="Admin">Admin</option>
+        </select>
+      </form>
+      <div class="modal-actions">
+        <button id="userModalCancelBtn" class="secondary">Annuler</button>
+        <button id="userModalSaveBtn" class="primary">💾 Enregistrer</button>
+      </div>
+      <p id="userModalMessage"></p>
     </div>
   </div>
 
